@@ -1,444 +1,206 @@
-import os
-import random
 import pickle
-
-import librosa
-import numpy as np
 import pandas as pd
 
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
 
-from scipy.sparse import csr_matrix
-from scipy.sparse import hstack
-
-# ==========================================
-# DATASET PATH
-# ==========================================
-
-DATASET_PATH = "datasets/TESS Toronto emotional speech set data"
-
-# ==========================================
-# TEXT SAMPLES
-# ==========================================
 
 emotion_texts = {
-
     "angry": [
         "I am angry",
         "I am furious",
         "I am upset",
-        "This makes me mad"
+        "I am irritated",
+        "I am mad",
+        "This makes me angry",
+        "I feel rage",
+        "I am frustrated",
+        "I am annoyed",
+        "I am very upset"
     ],
 
-    "disgust": [
-        "I feel disgusted",
-        "This is disgusting",
-        "I feel uncomfortable",
-        "This is horrible"
+    "happy": [
+        "I am happy",
+        "I feel wonderful",
+        "I am joyful",
+        "I am delighted",
+        "I am excited",
+        "Today is amazing",
+        "I feel great",
+        "I am cheerful",
+        "I am pleased",
+        "Life is beautiful"
+    ],
+
+    "sad": [
+        "I am sad",
+        "I feel depressed",
+        "I am unhappy",
+        "I feel lonely",
+        "I feel miserable",
+        "I am heartbroken",
+        "Today is awful",
+        "I feel down",
+        "I am disappointed",
+        "I feel terrible",
+        "Nothing is going right",
+        "I failed my exam",
+        "I feel hopeless",
+        "I want to cry",
+        "I feel broken"
     ],
 
     "fear": [
         "I am scared",
         "I am afraid",
         "I feel nervous",
-        "I am worried"
+        "I feel anxious",
+        "I am worried",
+        "I feel terrified",
+        "I am frightened",
+        "I feel unsafe",
+        "I am concerned",
+        "I feel panic"
     ],
 
-    "happy": [
-        "I am happy",
-        "I am joyful",
-        "Life is beautiful",
-        "I feel wonderful today"
+    "disgust": [
+        "This is disgusting",
+        "I feel disgusted",
+        "That is gross",
+        "This makes me sick",
+        "I feel revolted",
+        "This is unpleasant",
+        "That is nasty",
+        "I feel uncomfortable",
+        "This is horrible",
+        "I hate this"
+        "I feel like vomiting",
+        "This smells awful",
+        "This food is rotten",
+        "I want to throw up",
+        "This is disgusting"
+    ],
+
+    "surprise": [
+        "I am surprised",
+        "That was unexpected",
+        "I cannot believe it",
+        "What a surprise",
+        "This is shocking",
+        "I am amazed",
+        "That caught me off guard",
+        "I am astonished",
+        "This is unbelievable",
+        "I did not expect that"
     ],
 
     "neutral": [
         "I am okay",
         "I feel normal",
         "Nothing special happened",
-        "Just another day"
-    ],
-
-    "surprise": [
-        "I am surprised",
-        "Wow I didn't expect that",
-        "This is amazing",
-        "What a surprise"
-    ],
-
-    "sad": [
-        "I feel lonely",
-        "I am sad",
-        "I feel unhappy",
-        "Life is difficult"
+        "Today is ordinary",
+        "I am fine",
+        "Everything is normal",
+        "It is a regular day",
+        "I have no strong feelings",
+        "Things are okay",
+        "I am reading a book",
+        "I am going to the market",
+        "I am sitting in class",
+        "I am working on my project",
+        "I am using my computer",
+        "Today is Monday",
+        "The weather is normal",
+        "I feel neutral"
     ]
 }
 
-# ==========================================
-# BUILD DATASET
-# ==========================================
+training_data = [
+    ("I am angry", "angry"),
+    ("I am furious", "angry"),
+    ("This makes me mad", "angry"),
+    ("I am upset", "angry"),
+
+    ("I am sad", "sad"),
+    ("I am depressed", "sad"),
+    ("Nothing is going right", "sad"),
+    ("I feel lonely", "sad"),
+
+    ("I am scared", "fear"),
+    ("I am terrified", "fear"),
+    ("I am anxious", "fear"),
+
+    ("I feel disgusted", "disgust"),
+    ("This makes me sick", "disgust"),
+    ("I feel like vomiting", "disgust"),
+
+    ("Today is Monday", "neutral"),
+    ("I am reading a book", "neutral"),
+    ("I am going to the market", "neutral"),
+
+    ("I am happy", "happy"),
+    ("Life is beautiful", "happy"),
+    ("I feel wonderful", "happy"),
+
+    ("Wow!", "surprise"),
+    ("I did not expect that", "surprise"),
+    ("That is surprising", "surprise")
+]
 
 data = []
 
-for folder in os.listdir(DATASET_PATH):
-
-    folder_path = os.path.join(DATASET_PATH, folder)
-
-    if not os.path.isdir(folder_path):
-        continue
-
-    emotion = folder.split("_")[-1].lower()
-
-    if emotion == "surprised":
-        emotion = "surprise"
-
-    if emotion not in emotion_texts:
-        continue
-
-    for file in os.listdir(folder_path):
-
-        if file.endswith(".wav"):
-
-            file_path = os.path.join(
-                folder_path,
-                file
-            )
-
+for emotion, texts in emotion_texts.items():
+    for text in texts:
+        for _ in range(40):
             data.append({
-                "file_path": file_path,
-                "text": random.choice(
-                    emotion_texts[emotion]
-                ),
+                "text": text,
                 "emotion": emotion
             })
 
+for text, emotion in training_data:
+    data.append({
+        "text": text,
+        "emotion": emotion
+    })
+
+
 df = pd.DataFrame(data)
 
-print("Total Samples:", len(df))
+x = df["text"]
+y = df["emotion"]
 
-# ==========================================
-# AUDIO FEATURES
-# ==========================================
-
-audio_features = []
-
-for file_path in df["file_path"]:
-
-    audio, sr = librosa.load(
-        file_path,
-        sr=16000
-    )
-
-    mfcc = librosa.feature.mfcc(
-        y=audio,
-        sr=sr,
-        n_mfcc=40
-    )
-
-    feature_vector = np.mean(
-        mfcc,
-        axis=1
-    )
-
-    audio_features.append(
-        feature_vector
-    )
-
-audio_features = np.array(
-    audio_features
+x_train, x_test, y_train, y_test = train_test_split(
+    x,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
 )
-
-print(
-    "Audio Features Shape:",
-    audio_features.shape
-)
-
-# ==========================================
-# TEXT FEATURES
-# ==========================================
 
 vectorizer = TfidfVectorizer()
 
-text_features = vectorizer.fit_transform(
-    df["text"]
-)
+x_train_vector = vectorizer.fit_transform(x_train)
+x_test_vector = vectorizer.transform(x_test)
 
-print(
-    "Text Features Shape:",
-    text_features.shape
-)
+model = LogisticRegression(max_iter=1000)
 
-# ==========================================
-# FUSION FEATURES
-# ==========================================
+print("Training text emotion model...")
+model.fit(x_train_vector, y_train)
 
-audio_sparse = csr_matrix(
-    audio_features
-)
+predictions = model.predict(x_test_vector)
 
-fusion_features = hstack([
-    audio_sparse,
-    text_features
-])
+accuracy = accuracy_score(y_test, predictions)
 
-print(
-    "Fusion Shape:",
-    fusion_features.shape
-)
+print("\nText Model Accuracy:", accuracy)
+print("\nClassification Report:\n")
+print(classification_report(y_test, predictions))
 
-# ==========================================
-# TRAIN TEST SPLIT
-# ==========================================
+with open("text_model.pkl", "wb") as model_file:
+    pickle.dump(model, model_file)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    fusion_features,
-    df["emotion"],
-    test_size=0.2,
-    random_state=42,
-    stratify=df["emotion"]
-)
+with open("text_vectorizer.pkl", "wb") as vectorizer_file:
+    pickle.dump(vectorizer, vectorizer_file)
 
-# ==========================================
-# MODEL
-# ==========================================
-
-model = RandomForestClassifier(
-    n_estimators=300,
-    random_state=42
-)
-
-print("\nTraining Fusion Model...")
-
-model.fit(
-    X_train,
-    y_train
-)
-
-# ==========================================
-# EVALUATION
-# ==========================================
-
-predictions = model.predict(
-    X_test
-)
-
-accuracy = accuracy_score(
-    y_test,
-    predictions
-)
-
-print(
-    "\nFusion Accuracy:",
-    accuracy
-)
-
-print(
-    "\nClassification Report:\n"
-)
-
-print(
-    classification_report(
-        y_test,
-        predictions
-    )
-)
-
-# ==========================================
-# SAVE MODEL
-# ==========================================
-
-os.makedirs(
-    "results",
-    exist_ok=True
-)
-
-with open(
-    "results/fusion_model.pkl",
-    "wb"
-) as f:
-
-    pickle.dump(
-        model,
-        f
-    )
-
-with open(
-    "results/fusion_vectorizer.pkl",
-    "wb"
-) as f:
-
-    pickle.dump(
-        vectorizer,
-        f
-    )
-
-print(
-    "\nFusion model saved successfully!"
-)
-
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# ==========================================
-# CONFUSION MATRIX
-# ==========================================
-
-plt.figure(figsize=(8, 6))
-
-cm = confusion_matrix(y_test, predictions)
-
-sns.heatmap(
-    cm,
-    annot=True,
-    fmt="d",
-    cmap="Blues",
-    xticklabels=model.classes_,
-    yticklabels=model.classes_
-)
-
-plt.xlabel("Predicted")
-plt.ylabel("Actual")
-plt.title("Fusion Model Confusion Matrix")
-
-plt.tight_layout()
-plt.savefig("results/confusion_matrix.png")
-plt.close()
-
-# ==========================================
-# EMOTION DISTRIBUTION
-# ==========================================
-
-plt.figure(figsize=(8, 5))
-
-emotion_counts = df["emotion"].value_counts()
-
-plt.bar(
-    emotion_counts.index,
-    emotion_counts.values
-)
-
-plt.title("Emotion Distribution")
-plt.xlabel("Emotion")
-plt.ylabel("Count")
-
-plt.tight_layout()
-plt.savefig("results/emotion_distribution.png")
-plt.close()
-
-# ==========================================
-# MODEL COMPARISON
-# ==========================================
-
-plt.figure(figsize=(6, 4))
-
-models = ["Text", "Speech", "Fusion"]
-
-fusion_accuracy = round(
-    accuracy * 100,
-    2
-)
-
-accuracies = [
-    100,
-    100,
-    fusion_accuracy
-]
-
-plt.bar(
-    models,
-    accuracies
-)
-
-plt.ylabel("Accuracy (%)")
-plt.title("Model Comparison")
-
-plt.ylim(90, 100)
-
-plt.tight_layout()
-plt.savefig("results/model_comparison.png")
-plt.close()
-
-print("\nVisualizations saved successfully!")
-
-from sklearn.decomposition import PCA
-
-# ==========================================
-# TEXT CLUSTERS
-# ==========================================
-
-text_dense = text_features.toarray()
-
-pca = PCA(n_components=2)
-
-text_pca = pca.fit_transform(
-    text_dense
-)
-
-plt.figure(figsize=(8,6))
-
-emotion_labels = pd.factorize(
-    df["emotion"]
-)[0]
-
-scatter = plt.scatter(
-    text_pca[:,0],
-    text_pca[:,1],
-    c=emotion_labels,
-    cmap="tab10"
-)
-
-plt.colorbar(scatter)
-
-plt.title("Text Emotion Clusters")
-plt.xlabel("PCA Component 1")
-plt.ylabel("PCA Component 2")
-
-plt.tight_layout()
-
-plt.savefig(
-    "results/text_clusters.png"
-)
-
-plt.close()
-
-print("Text cluster visualization saved!")
-
-# ==========================================
-# FUSION CLUSTERS
-# ==========================================
-
-fusion_dense = fusion_features.toarray()
-
-pca = PCA(n_components=2)
-
-fusion_pca = pca.fit_transform(
-    fusion_dense
-)
-
-plt.figure(figsize=(8,6))
-
-scatter = plt.scatter(
-    fusion_pca[:,0],
-    fusion_pca[:,1],
-    c=emotion_labels,
-    cmap="tab10"
-)
-
-plt.colorbar(scatter)
-
-plt.title("Fusion Emotion Clusters")
-plt.xlabel("PCA Component 1")
-plt.ylabel("PCA Component 2")
-
-plt.tight_layout()
-
-plt.savefig(
-    "results/fusion_clusters.png"
-)
-
-plt.close()
-
-print("Fusion cluster visualization saved!")
+print("\nText model saved successfully.")
